@@ -1,0 +1,35 @@
+# FedSentinel Attack Simulation Configuration
+# Contract reference: FedSentinel Team Engineering Contract v2.0 — Section 32
+
+attack:
+  enabled: true
+  scenario: "backdoor"
+  attacker_count: 1
+  target_clients: ["C17"]
+  start_round: 5
+  intensity: 0.8
+  seed: 42
+
+scenarios:
+  normal:
+    description: "100% honest clients across all rounds"
+  model_poisoning:
+    scale_factor: 10.0
+    use_sign_flip: false
+    start_round: 3
+  label_poisoning:
+    source_class: 1
+    target_class: 7
+    poison_rate: 1.0
+    start_round: 3
+  backdoor:
+    target_label: 0
+    poison_rate: 0.3
+    trigger_size: 3
+    trigger_value: 1.0
+    start_round: 5
+  sleeper:
+    stealth_round: 4
+    escalation_round: 5
+    stealth_poison_rate: 0.2
+    escalation_scale: 15.0
