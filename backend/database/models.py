@@ -176,6 +176,8 @@ class ImpactRecord(Base):
     estimated_loss_change = Column(Float, nullable=True)
     impact_level = Column(String, nullable=False)
     explanation_codes_json = Column(Text, default="[]")
+    impact_breakdown_json = Column(Text, default="{}")
+    top_impacted_layers_json = Column(Text, default="[]")
     impact_version = Column(String, default="impact-v1")
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -183,6 +185,12 @@ class ImpactRecord(Base):
 
     def get_explanation_codes(self) -> list:
         return json.loads(self.explanation_codes_json) if self.explanation_codes_json else []
+
+    def get_impact_breakdown(self) -> dict:
+        return json.loads(self.impact_breakdown_json) if self.impact_breakdown_json else {}
+
+    def get_top_impacted_layers(self) -> list:
+        return json.loads(self.top_impacted_layers_json) if self.top_impacted_layers_json else []
 
 
 class RecoveryRecord(Base):
@@ -204,6 +212,8 @@ class RecoveryRecord(Base):
     after_loss = Column(Float, nullable=True)
     recovery_status = Column(String, nullable=False)
     recovery_version = Column(String, default="recovery-v1")
+    selected_action = Column(String, nullable=True)
+    details_json = Column(Text, default="{}")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     simulation_run = relationship("SimulationRun", back_populates="recoveries")
@@ -213,6 +223,9 @@ class RecoveryRecord(Base):
 
     def get_excluded_client_ids(self) -> list:
         return json.loads(self.excluded_client_ids_json) if self.excluded_client_ids_json else []
+
+    def get_details(self) -> dict:
+        return json.loads(self.details_json) if self.details_json else {}
 
 
 class MetricRecord(Base):

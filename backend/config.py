@@ -5,6 +5,8 @@ Loads simulation, attack, detection, and server settings.
 Configuration parameters must be versioned (Contract §33).
 """
 
+from typing import Any
+import os
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
@@ -25,6 +27,7 @@ class AttackConfig(BaseSettings):
     start_round: int = 5
     intensity: float = 0.8
     target_clients: list[str] = Field(default_factory=list)
+    targets: Any = None
 
 
 class DetectionConfig(BaseSettings):
@@ -60,6 +63,13 @@ class ServerConfig(BaseSettings):
     database_url: str = "sqlite:///./fedsentinel.db"
     api_version: str = "v1"
     schema_version: str = "schema-v1"
+    frontend_origins: list[str] = Field(
+        default_factory=lambda: [
+            origin.strip()
+            for origin in os.getenv("FRONTEND_ORIGIN", "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000").split(",")
+            if origin.strip()
+        ]
+    )
 
 
 class AppConfig(BaseSettings):

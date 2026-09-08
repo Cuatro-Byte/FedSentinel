@@ -18,10 +18,12 @@ from tests.fixtures.mock_p2 import MockP2Attack
 from tests.fixtures.mock_p3 import MockP3Sentinel
 
 
+from sqlalchemy.pool import StaticPool
+
 @pytest.fixture
 def db_session():
     """Create an in-memory SQLite database session for testing."""
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(bind=engine)
     TestSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     session = TestSession()
@@ -50,9 +52,12 @@ def mock_p3():
     return MockP3Sentinel()
 
 
+import unittest.mock as mock
+
 @pytest.fixture(autouse=True)
 def configured_adapters():
     """Explicitly inject test doubles; production never imports test fixtures."""
     configure_adapters(MockP1FL(), MockP2Attack(), MockP3Sentinel())
-    yield
+    with mock.patch("backend.main.configure_adapters"):
+        yield
     reset_adapters()

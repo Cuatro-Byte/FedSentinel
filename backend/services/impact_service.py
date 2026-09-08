@@ -32,6 +32,8 @@ class ImpactService:
                 "estimated_loss_change": imp.estimated_loss_change,
                 "impact_level": imp.impact_level,
                 "explanation_codes": imp.get_explanation_codes(),
+                "impact_breakdown": imp.get_impact_breakdown(),
+                "top_impacted_layers": imp.get_top_impacted_layers(),
                 "impact_version": imp.impact_version,
                 "created_at": imp.created_at.isoformat() if imp.created_at else None,
             }
@@ -52,6 +54,8 @@ class ImpactService:
                 "aggregation_weight": imp.aggregation_weight,
                 "impact_level": imp.impact_level,
                 "explanation_codes": imp.get_explanation_codes(),
+                "impact_breakdown": imp.get_impact_breakdown(),
+                "top_impacted_layers": imp.get_top_impacted_layers(),
                 "impact_version": imp.impact_version,
             }
             for imp in impacts

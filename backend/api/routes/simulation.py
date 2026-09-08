@@ -32,6 +32,12 @@ def create_simulation(request: SimulationCreateRequest,
             client_count=request.client_count,
             rounds=request.rounds,
             attack_enabled=request.attack_enabled,
+            attacker_count=request.attacker_count,
+            intensity=request.intensity,
+            start_round=request.start_round,
+            targets=request.targets,
+            seed=request.seed,
+            background=request.background,
         )
         return result
     except RuntimeError as e:
@@ -40,6 +46,14 @@ def create_simulation(request: SimulationCreateRequest,
             "error": {
                 "code": "ADAPTERS_NOT_CONFIGURED",
                 "message": "Simulation adapters are not configured",
+            }
+        })
+    except ValueError as e:
+        logger.warning("Simulation configuration error: %s", e)
+        raise HTTPException(status_code=400, detail={
+            "error": {
+                "code": "INVALID_CONFIGURATION",
+                "message": str(e),
             }
         })
     except Exception:

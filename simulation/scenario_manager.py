@@ -33,12 +33,14 @@ class ScenarioManager:
         return {
             "enabled": self.config.attack.enabled,
             "scenario": self.config.attack.scenario,
-            "attacker_count": self.config.attack.attacker_count,
+            "attacker_count": max(2, self.config.attack.attacker_count) if self.config.attack.scenario == "mixed_attack" else self.config.attack.attacker_count,
             "start_round": self.config.attack.start_round,
             "intensity": self.config.attack.intensity,
             "target_clients": self.config.attack.target_clients,
+            "targets": getattr(self.config.attack, "targets", None) or self.config.attack.target_clients,
             "rounds": self.config.simulation.rounds,
             "client_count": self.config.simulation.client_count,
+            "seed": self.config.simulation.seed,
         }
 
     def get_recovery_params(self) -> dict:
@@ -58,4 +60,5 @@ class ScenarioManager:
         return {
             "local_epochs": self.config.simulation.local_epochs,
             "seed": self.config.simulation.seed,
+            "client_count": self.config.simulation.client_count,
         }

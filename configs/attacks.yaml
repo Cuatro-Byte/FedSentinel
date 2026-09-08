@@ -4,9 +4,9 @@
 attack:
   enabled: true
   scenario: "backdoor"
-  attacker_count: 1
+  attacker_count: 2
   target_clients: ["C17"]
-  start_round: 5
+  start_round: 1
   intensity: 0.8
   seed: 42
 

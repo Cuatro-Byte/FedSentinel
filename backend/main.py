@@ -34,12 +34,59 @@ logger = logging.getLogger("fedsentinel")
 config = get_config()
 
 
+from backend.adapters.registry import configure_adapters
+from backend.adapters.p1_fl_adapter import P1FLAdapter
+from backend.adapters.p2_attack_adapter import P2AttackAdapter
+from backend.adapters.p3_sentinel_adapter import P3SentinelAdapter
+
+from core.federated.client_manager import ClientManager
+from core.federated.aggregator import Aggregator
+from core.federated.evaluator import Evaluator
+from core.federated.checkpoint import CheckpointManager
+import torch
+import torch.nn as nn
+
+class DummyModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc = nn.Linear(10, 2)
+        
+    def forward(self, x):
+        return self.fc(x)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan — initialize database on startup."""
+    """Application lifespan — initialize database on startup and configure adapters."""
     logger.info("FedSentinel backend starting...")
     init_db()
     logger.info("Database initialized.")
+    
+    logger.info("Configuring adapters...")
+    
+    # Initialize P1 dependencies
+    from core.p1_models.model import SimpleCNN
+    global_model = SimpleCNN(in_channels=1, num_classes=10)
+    client_manager = ClientManager()
+    aggregator = Aggregator()
+    evaluator = Evaluator()
+    checkpoint_manager = CheckpointManager()
+    
+    p1_adapter = P1FLAdapter(
+        global_model=global_model,
+        client_manager=client_manager,
+        aggregator=aggregator,
+        evaluator=evaluator,
+        checkpoint_manager=checkpoint_manager,
+    )
+    p1_adapter.provision_clients(client_count=config.simulation.client_count, seed=config.simulation.seed)
+    
+    configure_adapters(
+        fl_core=p1_adapter,
+        attack_engine=P2AttackAdapter(),
+        sentinel=P3SentinelAdapter()
+    )
+    logger.info("Adapters configured.")
+    
     yield
     logger.info("FedSentinel backend shutting down.")
 
@@ -54,7 +101,7 @@ app = FastAPI(
 # CORS middleware for frontend integration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=config.server.frontend_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

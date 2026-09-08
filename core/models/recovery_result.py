@@ -10,6 +10,7 @@ Person 4 orchestrates and persists the result.
 """
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -34,3 +35,5 @@ class RecoveryResult(BaseModel):
     recovery_status: RecoveryStatus
     recovery_version: str = "recovery-v1"
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    selected_action: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)

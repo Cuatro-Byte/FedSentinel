@@ -11,6 +11,7 @@ Impact score is normalized 0.00–1.00 (Contract §17.3).
 """
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -33,3 +34,6 @@ class ImpactResult(BaseModel):
     explanation_codes: list[str] = Field(default_factory=list)
     impact_version: str = "impact-v1"
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    impact_breakdown: dict[str, float] = Field(default_factory=dict)
+    top_impacted_layers: list[dict[str, Any]] = Field(default_factory=list)
+    details: dict[str, Any] = Field(default_factory=dict)

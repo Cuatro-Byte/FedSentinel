@@ -11,13 +11,17 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
 
 from backend.database.database import Base, get_db
+import backend.database.models  # Required to register tables with Base.metadata
 from backend.main import app
 
+
+from sqlalchemy.pool import StaticPool
 
 # Create a module-level test engine and session factory
 _test_engine = create_engine(
     "sqlite:///:memory:",
     connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
 )
 _TestSession = sessionmaker(autocommit=False, autoflush=False, bind=_test_engine)
 
@@ -34,6 +38,7 @@ def _override_get_db():
 @pytest.fixture(autouse=True)
 def setup_test_db():
     """Create tables before each test, drop after."""
+    print("TABLES BEFORE:", Base.metadata.tables.keys())
     Base.metadata.create_all(bind=_test_engine)
     app.dependency_overrides[get_db] = _override_get_db
     yield
@@ -99,6 +104,64 @@ class TestSimulationEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert len(data) >= 1
+
+    def test_create_simulation_background(self, client):
+        """POST /api/v1/simulations with background=True."""
+        response = client.post("/api/v1/simulations", json={
+            "client_count": 3,
+            "rounds": 1,
+            "scenario": "normal",
+            "attack_enabled": False,
+            "background": True,
+        })
+        assert response.status_code == 200, f"Failed: {response.text[:300]}"
+        data = response.json()
+        assert "run_id" in data
+        assert "simulation_id" in data
+        assert data["run_id"] == data["simulation_id"]
+        assert data["status"] in ["PENDING", "RUNNING", "COMPLETED"]
+
+    def test_simulation_validation_errors(self, client):
+        """Verify input validation rejects invalid simulation configs."""
+        # 1. Invalid scenario
+        resp = client.post("/api/v1/simulations", json={
+            "client_count": 5, "rounds": 3, "scenario": "totally_invalid_scenario"
+        })
+        assert resp.status_code == 422
+
+        # 2. Non-positive rounds
+        resp = client.post("/api/v1/simulations", json={
+            "client_count": 5, "rounds": 0, "scenario": "normal"
+        })
+        assert resp.status_code == 422
+
+        # 3. Non-positive client_count
+        resp = client.post("/api/v1/simulations", json={
+            "client_count": 0, "rounds": 3, "scenario": "normal"
+        })
+        assert resp.status_code == 422
+
+        # 4. start_round > rounds
+        resp = client.post("/api/v1/simulations", json={
+            "client_count": 5, "rounds": 2, "start_round": 5, "scenario": "model_poisoning"
+        })
+        assert resp.status_code == 422
+
+        # 5. attacker_count > client_count
+        resp = client.post("/api/v1/simulations", json={
+            "client_count": 3, "rounds": 2, "attacker_count": 10, "scenario": "model_poisoning"
+        })
+        assert resp.status_code == 422
+
+    def test_cors_headers(self, client):
+        """Verify strict non-wildcard CORS headers for frontend origin."""
+        response = client.get(
+            "/api/v1/health",
+            headers={"Origin": "http://localhost:5173"}
+        )
+        assert response.status_code == 200
+        assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+        assert response.headers.get("access-control-allow-credentials") == "true"
 
 
 class TestDataEndpoints:

@@ -10,6 +10,7 @@ the algorithms behind them.
 """
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from core.models import (
     ModelUpdate, DetectionResult, ImpactResult, RecoveryResult,
@@ -41,14 +42,14 @@ class FLCoreInterface(ABC):
 
     @abstractmethod
     def aggregate(self, updates: list[ModelUpdate],
-                  actions: dict[str, ResponseAction],
+                  detections: list[DetectionResult],
                   current_model_version: str) -> str:
         """Perform trust-aware aggregation.
 
         Args:
             updates: All model updates for this round.
-            actions: Map of update_id → ResponseAction from P3.
-                     P1 uses this to weight/exclude updates.
+            detections: List of DetectionResult objects from P3.
+                        P1 uses the action field to weight/exclude updates.
             current_model_version: Current global model version.
 
         Returns:
@@ -120,6 +121,16 @@ class AttackInterface(ABC):
         """
         ...
 
+    def apply_data_attack(self, client_id: str, dataset: Any,
+                          round_id: int, config: dict,
+                          client_ids: list[str] | None = None) -> Any:
+        """Apply data-level attack to a client's dataset before training.
+
+        Returns the modified dataset if the client is an attacker with a
+        data-level attack, or the original dataset otherwise.
+        """
+        return dataset
+
 
 class SentinelInterface(ABC):
     """Interface for Person 3's Sentinel module.
@@ -174,4 +185,9 @@ class SentinelInterface(ABC):
         Returns a RecoveryResult with recovery_status indicating
         whether recovery should proceed.
         """
+        ...
+
+    @abstractmethod
+    def reset(self) -> None:
+        """Reset internal state across simulation runs."""
         ...

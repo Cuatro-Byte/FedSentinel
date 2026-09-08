@@ -360,8 +360,10 @@ class ImpactRepository:
                 aggregation_weight=imp.aggregation_weight,
                 estimated_accuracy_change=imp.estimated_accuracy_change,
                 estimated_loss_change=imp.estimated_loss_change,
-                impact_level=imp.impact_level.value,
-                explanation_codes_json=json.dumps(imp.explanation_codes),
+                impact_level=imp.impact_level.value if hasattr(imp.impact_level, "value") else str(imp.impact_level),
+                explanation_codes_json=json.dumps(imp.explanation_codes or []),
+                impact_breakdown_json=json.dumps(getattr(imp, "impact_breakdown", {})),
+                top_impacted_layers_json=json.dumps(getattr(imp, "top_impacted_layers", [])),
                 impact_version=imp.impact_version,
                 created_at=imp.created_at,
             )
@@ -391,21 +393,24 @@ class RecoveryRepository:
         self.db = db
 
     def create_from_canonical(self, recovery: RecoveryResult) -> RecoveryRecord:
+        status_val = recovery.recovery_status.value if hasattr(recovery.recovery_status, "value") else str(recovery.recovery_status)
         record = RecoveryRecord(
             recovery_id=recovery.recovery_id,
             run_id=recovery.run_id,
             round_id=recovery.round_id,
             trigger=recovery.trigger,
-            affected_update_ids_json=json.dumps(recovery.affected_update_ids),
-            excluded_client_ids_json=json.dumps(recovery.excluded_client_ids),
+            affected_update_ids_json=json.dumps(recovery.affected_update_ids or []),
+            excluded_client_ids_json=json.dumps(recovery.excluded_client_ids or []),
             previous_model_version=recovery.previous_model_version,
             recovered_model_version=recovery.recovered_model_version,
             before_accuracy=recovery.before_accuracy,
             after_accuracy=recovery.after_accuracy,
             before_loss=recovery.before_loss,
             after_loss=recovery.after_loss,
-            recovery_status=recovery.recovery_status.value,
+            recovery_status=status_val,
             recovery_version=recovery.recovery_version,
+            selected_action=getattr(recovery, "selected_action", None),
+            details_json=json.dumps(getattr(recovery, "details", {})),
             created_at=recovery.created_at,
         )
         self.db.add(record)

@@ -43,6 +43,10 @@ class MockP3Sentinel(SentinelInterface):
     NORM_SUSPICIOUS_THRESHOLD = 1.0
     NORM_MALICIOUS_THRESHOLD = 5.0
 
+    def reset(self) -> None:
+        """Reset internal state (no-op for mock)."""
+        pass
+
     def detect(self, updates: list[ModelUpdate],
                round_id: int) -> list[DetectionResult]:
         """Produce deterministic DetectionResults based on parameter norm."""

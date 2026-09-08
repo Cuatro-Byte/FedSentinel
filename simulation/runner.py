@@ -21,6 +21,7 @@ Orchestration flow (Contract §57, corrected checklist §7):
 """
 
 import logging
+from typing import Any
 import uuid
 from datetime import datetime
 
@@ -38,6 +39,16 @@ from core.models.enums import ThreatLevel, ResponseAction, RecoveryStatus
 from simulation.scenario_manager import ScenarioManager
 
 logger = logging.getLogger("fedsentinel.runner")
+
+
+def _format_float(val: Any, precision: int = 4) -> str:
+    """Safely format a float or return 'N/A' if None/invalid, preventing format crashes."""
+    if val is None:
+        return "N/A"
+    try:
+        return f"{float(val):.{precision}f}"
+    except (ValueError, TypeError):
+        return "N/A"
 
 
 class SimulationRunner:
@@ -95,22 +106,36 @@ class SimulationRunner:
         client_ids = self.scenario.get_client_ids()
         total_rounds = sim_params["rounds"]
         scenario_name = scenario or attack_params.get("scenario", "normal")
+        logger.info(f"Preparing simulation {run_id} ({scenario_name})")
 
-        # 1. Create simulation run
-        sim_run = self.sim_repo.create(
-            run_id=run_id,
-            scenario=scenario_name,
-            client_count=len(client_ids),
-            round_count=total_rounds,
-            attack_enabled=attack_params.get("enabled", True),
-            seed=sim_params.get("seed", 42),
-        )
+        # Reset stateful adapters (Issue 1)
+        if hasattr(self.sentinel, 'reset'):
+            self.sentinel.reset()
+
+        # 1. Create or get simulation run
+        sim_run = self.sim_repo.get(run_id)
+        if not sim_run:
+            sim_run = self.sim_repo.create(
+                run_id=run_id,
+                scenario=scenario_name,
+                client_count=len(client_ids),
+                round_count=total_rounds,
+                attack_enabled=attack_params.get("enabled", True),
+                seed=sim_params.get("seed", 42),
+            )
         self.sim_repo.update_status(run_id, "RUNNING")
 
         # 2. Create client records
         self.client_repo.create_batch(run_id, client_ids)
 
-        # 3. Initialize global model via P1
+        # 3. Provision P1 clients and initialize global model
+        if hasattr(self.fl_core, "provision_clients"):
+            self.fl_core.provision_clients(
+                client_count=len(client_ids),
+                seed=sim_params.get("seed", 42),
+                local_epochs=fl_config.get("local_epochs", 2),
+            )
+        fl_config["client_count"] = len(client_ids)
         model_version = self.fl_core.initialize_global_model(fl_config)
         self.sim_repo.update_status(run_id, "RUNNING", model_version=model_version)
 
@@ -156,6 +181,9 @@ class SimulationRunner:
             logger.info(f"Simulation {run_id} completed. Final model: {model_version}")
 
         except Exception as e:
+            # A failed flush leaves SQLAlchemy sessions in a pending-rollback
+            # state.  Reset it before recording the failed run and audit event.
+            self.db.rollback()
             self.sim_repo.update_status(run_id, "FAILED")
             self.audit_repo.create(
                 run_id=run_id,
@@ -193,26 +221,55 @@ class SimulationRunner:
             model_version=model_version,
         )
 
-        # Step 1: P1 trains clients
-        updates = self.fl_core.train_clients(
-            run_id, round_id, model_version, client_ids, fl_config
-        )
+        # Step 1: Pre-training data-plane attacks (P2 -> client dataset -> P1)
+        original_dataloaders = {}
+        if hasattr(self.fl_core, "client_manager") and hasattr(self.attack_engine, "apply_data_attack"):
+            from torch.utils.data import DataLoader
+            for cid in client_ids:
+                client = self.fl_core.client_manager.get_client(cid)
+                if client and hasattr(client, "dataloader"):
+                    original_dataset = getattr(client.dataloader, "dataset", None)
+                    if original_dataset is not None:
+                        modified_dataset = self.attack_engine.apply_data_attack(
+                            client_id=cid,
+                            dataset=original_dataset,
+                            round_id=round_id,
+                            config=attack_params,
+                            client_ids=client_ids,
+                        )
+                        if modified_dataset is not original_dataset:
+                            original_dataloaders[cid] = client.dataloader
+                            batch_size = getattr(client.dataloader, "batch_size", 16) or 16
+                            client.dataloader = DataLoader(modified_dataset, batch_size=batch_size, shuffle=True)
 
-        # Step 2: P2 applies attacks
+        try:
+            # Step 2: P1 trains clients
+            updates = self.fl_core.train_clients(
+                run_id, round_id, model_version, client_ids, fl_config
+            )
+        finally:
+            # Restore original clean client dataloaders
+            if hasattr(self.fl_core, "client_manager"):
+                for cid, orig_dl in original_dataloaders.items():
+                    client = self.fl_core.client_manager.get_client(cid)
+                    if client:
+                        client.dataloader = orig_dl
+
+        # Step 3: P2 applies update-level attacks
         updates = self.attack_engine.apply_attacks(updates, round_id, attack_params)
 
         # Persist model updates (metadata only)
         self.update_repo.create_batch(updates, fl_round.id)
 
-        # Step 3: P3 detection
+        # Step 4: P3 detection
         detections = self.sentinel.detect(updates, round_id)
         self.detection_repo.create_batch(detections, run_id, fl_round.id)
 
-        # Step 4: P3 impact estimation
+        # Step 5: P3 impact estimation
         impacts = self.sentinel.estimate_impact(updates, detections, round_id)
         self.impact_repo.create_batch(impacts, run_id, fl_round.id)
 
-        # Step 5: P3 response decision
+        # Step 6: P3 response decision
         actions = self.sentinel.decide_response(detections, impacts)
 
         # Ground truth is captured only after inference and response decisions.
@@ -260,15 +317,15 @@ class SimulationRunner:
                     detector_version=det.detector_version,
                 )
 
-        # Step 6: P1 trust-aware aggregation (P4 passes actions to P1)
+        # Step 7: P1 trust-aware aggregation (P4 passes detections to P1)
         new_model_version = self.fl_core.aggregate(
-            updates, actions, model_version
+            updates, detections, model_version
         )
 
-        # Step 7: P1 evaluation
+        # Step 8: P1 evaluation
         evaluation = self.fl_core.evaluate(new_model_version)
 
-        # Step 8: P3 recovery decision
+        # Step 9: P3 recovery decision
         recovery_triggered = False
         recovery_count = 0
         recovery_result = self.sentinel.check_recovery(
@@ -277,8 +334,8 @@ class SimulationRunner:
             recovery_params,
         )
 
-        # Step 9: If recovery triggered, P1 re-aggregates
-        if recovery_result.recovery_status == RecoveryStatus.TRIGGERED:
+        # Step 10: If recovery triggered, P1 re-aggregates
+        if recovery_result and recovery_result.recovery_status == RecoveryStatus.TRIGGERED:
             recovery_triggered = True
             recovery_count = 1
 
@@ -313,12 +370,15 @@ class SimulationRunner:
             new_model_version = recovered_model_version
             evaluation = recovered_eval
 
+            before_acc_str = _format_float(recovery_result.before_accuracy)
+            after_acc_str = _format_float(recovered_eval.get("accuracy") if recovered_eval else None)
+
             self.audit_repo.create(
                 run_id=run_id, round_id=round_id,
                 event_type="RECOVERY_COMPLETED",
                 message=f"Recovery completed. "
-                        f"Before: acc={recovery_result.before_accuracy:.4f}, "
-                        f"After: acc={recovered_eval.get('accuracy', 0):.4f}. "
+                        f"Before: acc={before_acc_str}, "
+                        f"After: acc={after_acc_str}. "
                         f"New model: {recovered_model_version}",
                 severity="INFO",
                 model_version=recovered_model_version,
@@ -326,7 +386,8 @@ class SimulationRunner:
             )
 
         # Persist recovery result
-        self.recovery_repo.create_from_canonical(recovery_result)
+        if recovery_result is not None:
+            self.recovery_repo.create_from_canonical(recovery_result)
 
         # Update round record
         self.round_repo.update(
@@ -341,13 +402,15 @@ class SimulationRunner:
             recovery_triggered=recovery_triggered,
         )
 
-        # Step 10: Assemble and persist SimulationMetrics (P4 responsibility)
+        # Step 11: Assemble and persist SimulationMetrics (P4 responsibility)
+        eval_acc = evaluation.get("accuracy") if evaluation else None
+        eval_loss = evaluation.get("loss") if evaluation else None
         metrics = SimulationMetrics(
             run_id=run_id,
             round_id=round_id,
             model_version=new_model_version,
-            accuracy=evaluation.get("accuracy", 0.0),
-            loss=evaluation.get("loss", 0.0),
+            accuracy=float(eval_acc) if eval_acc is not None else 0.0,
+            loss=float(eval_loss) if eval_loss is not None else 0.0,
             attack_success_rate=attack_success_rate,
             malicious_updates=malicious,
             suspicious_updates=suspicious,
@@ -359,19 +422,21 @@ class SimulationRunner:
         )
         self.metric_repo.create_from_canonical(metrics)
 
+        acc_str = _format_float(evaluation.get("accuracy") if evaluation else None)
+        loss_str = _format_float(evaluation.get("loss") if evaluation else None)
         self.audit_repo.create(
             run_id=run_id, round_id=round_id,
             event_type="ROUND_COMPLETED",
             message=f"Round {round_id} completed: "
-                    f"acc={evaluation.get('accuracy', 0):.4f}, "
-                    f"loss={evaluation.get('loss', 0):.4f}, "
+                    f"acc={acc_str}, "
+                    f"loss={loss_str}, "
                     f"model={new_model_version}",
             severity="INFO",
             model_version=new_model_version,
         )
 
         logger.info(f"  Round {round_id} completed: "
-                     f"acc={evaluation.get('accuracy', 0):.4f}, "
+                     f"acc={acc_str}, "
                      f"model={new_model_version}")
 
         return new_model_version

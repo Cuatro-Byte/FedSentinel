@@ -35,6 +35,8 @@ class RecoveryService:
                 "after_loss": r.after_loss,
                 "recovery_status": r.recovery_status,
                 "recovery_version": r.recovery_version,
+                "selected_action": r.selected_action,
+                "details": r.get_details(),
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             }
             for r in records

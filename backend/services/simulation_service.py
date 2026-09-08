@@ -35,13 +35,19 @@ class SimulationService:
     def start_simulation(self, run_id: str, scenario: str | None = None,
                          client_count: int | None = None,
                          rounds: int | None = None,
-                         attack_enabled: bool | None = None) -> dict:
+                         attack_enabled: bool | None = None,
+                         attacker_count: int | None = None,
+                         intensity: float | None = None,
+                         start_round: int | None = None,
+                         targets: any = None,
+                         seed: int | None = None,
+                         background: bool = False) -> dict:
         """Start a new simulation run.
 
-        Runs synchronously for simplicity in the prototype.
-        For production, this would be async/background task.
+        If background=True, starts asynchronously in a daemon worker thread.
+        If background=False, runs synchronously.
         """
-        # Apply overrides
+        # Apply overrides to config
         if client_count is not None:
             self.config.simulation.client_count = client_count
         if rounds is not None:
@@ -50,6 +56,60 @@ class SimulationService:
             self.config.attack.enabled = attack_enabled
         if scenario is not None:
             self.config.attack.scenario = scenario
+        if attacker_count is not None:
+            self.config.attack.attacker_count = attacker_count
+        if intensity is not None:
+            self.config.attack.intensity = intensity
+        if start_round is not None:
+            self.config.attack.start_round = start_round
+        if targets is not None:
+            self.config.attack.targets = targets
+        if seed is not None:
+            self.config.simulation.seed = seed
+
+        scenario_name = scenario or self.config.attack.scenario
+
+        if background:
+            # Pre-create simulation record with PENDING status
+            self.sim_repo.create(
+                run_id=run_id,
+                scenario=scenario_name,
+                client_count=self.config.simulation.client_count,
+                round_count=self.config.simulation.rounds,
+                attack_enabled=self.config.attack.enabled,
+                seed=self.config.simulation.seed,
+            )
+
+            def _background_worker(rid: str, scn: str, cfg: AppConfig):
+                from backend.database.database import SessionLocal
+                worker_db = SessionLocal()
+                try:
+                    runner = SimulationRunner(
+                        db=worker_db,
+                        fl_core=self.fl_core,
+                        attack_engine=self.attack_engine,
+                        sentinel=self.sentinel,
+                        config=cfg,
+                    )
+                    runner.run_simulation(run_id=rid, scenario=scn)
+                except Exception as exc:
+                    logger.error("Background simulation %s failed: %s", rid, exc, exc_info=True)
+                finally:
+                    worker_db.close()
+
+            worker_thread = threading.Thread(
+                target=_background_worker,
+                args=(run_id, scenario_name, self.config),
+                daemon=True,
+                name=f"sim-worker-{run_id}",
+            )
+            self._active_runs[run_id] = worker_thread
+            worker_thread.start()
+            return {
+                "run_id": run_id,
+                "simulation_id": run_id,
+                "status": "PENDING",
+            }
 
         runner = SimulationRunner(
             db=self.db,
@@ -60,7 +120,11 @@ class SimulationService:
         )
 
         runner.run_simulation(run_id=run_id, scenario=scenario)
-        return {"run_id": run_id, "status": "COMPLETED"}
+        return {
+            "run_id": run_id,
+            "simulation_id": run_id,
+            "status": "COMPLETED",
+        }
 
     def get_simulation(self, run_id: str) -> dict | None:
         """Get simulation status and summary."""
