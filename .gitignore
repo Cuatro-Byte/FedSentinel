@@ -1,25 +1,3 @@
-<<<<<<< HEAD
-# Python bytecode
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Pytest & Coverage
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Virtual Environments
-venv/
-.venv/
-env/
-
-# IDE & OS files
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
-=======
 .venv/
 venv/
 __pycache__/
@@ -34,4 +12,3 @@ frontend/.npm-cache/
 .env
 *.log
 openapi.json
->>>>>>> four-way-integration

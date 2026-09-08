@@ -539,11 +539,7 @@ class Sentinel:
             "action": mapped_action,
             "feature_summary": feature_summary,
             "anomaly_score": a_out.get("anomaly_score", 0.0),
-<<<<<<< HEAD
-            "similarity_score": sim_out.get("similarity_score", 1.0),
-=======
             "similarity_score": sim_out.get("consensus", {}).get("consensus_score", 1.0),
->>>>>>> four-way-integration
             "reputation_score": r_out.get("reputation_score", 1.0),
             "explanation_codes": d_out.get("reason_codes", t_out.get("contributing_factors", [])),
             "detector_version": "sentinel-v1",
