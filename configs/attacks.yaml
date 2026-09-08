@@ -4,9 +4,15 @@
 attack:
   enabled: true
   scenario: "backdoor"
+<<<<<<< HEAD
   attacker_count: 1
   target_clients: ["C17"]
   start_round: 5
+=======
+  attacker_count: 2
+  target_clients: ["C17"]
+  start_round: 1
+>>>>>>> four-way-integration
   intensity: 0.8
   seed: 42
 

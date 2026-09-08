@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Python bytecode
 __pycache__/
 *.py[cod]
@@ -18,3 +19,19 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
+=======
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+frontend/node_modules/
+frontend/dist/
+frontend/.npm-cache/
+
+*.db
+.env
+*.log
+openapi.json
+>>>>>>> four-way-integration
