@@ -30,6 +30,12 @@ export interface SimulationRequest {
   rounds: number
   scenario: string
   attack_enabled: boolean
+  attacker_count: number
+  intensity: number | null
+  start_round: number
+  targets: string[] | null
+  seed: number
+  background: boolean
 }
 
 export interface SimulationCreated {
@@ -91,6 +97,8 @@ export interface ImpactResult {
   estimated_loss_change: number | null
   impact_level: ImpactLevel
   explanation_codes: string[]
+  impact_breakdown?: Record<string, number>
+  top_impacted_layers?: Array<Record<string, unknown>>
   impact_version: string
   created_at: string | null
 }
@@ -127,6 +135,8 @@ export interface RecoveryRecord {
   after_loss: number | null
   recovery_status: RecoveryStatus
   recovery_version: string
+  selected_action?: string | null
+  details?: Record<string, unknown>
   created_at: string | null
 }
 

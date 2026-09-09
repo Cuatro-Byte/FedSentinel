@@ -18,7 +18,7 @@ describe('FedSentinel API client', () => {
       detail: { error: { code: 'INVALID_CONFIGURATION', message: 'Unsupported scenario' } },
     }), { status: 400, headers: { 'Content-Type': 'application/json' } })))
 
-    const request = api.createSimulation({ client_count: 5, rounds: 2, scenario: 'invalid', attack_enabled: true })
+    const request = api.createSimulation({ client_count: 5, rounds: 2, scenario: 'invalid', attack_enabled: true, attacker_count: 1, intensity: 0.8, start_round: 1, targets: null, seed: 42, background: false })
     await expect(request).rejects.toMatchObject({ status: 400, code: 'INVALID_CONFIGURATION', message: 'Unsupported scenario' })
   })
 
