@@ -17,20 +17,21 @@ VALID_SCENARIOS = {
     "backdoor",
     "mixed_attack",
     "sleeper",
+    "sybil",
 }
 
 
 class SimulationCreateRequest(BaseModel):
     """Request body for POST /api/v1/simulations (Contract §24)."""
-    client_count: int = Field(default=20, gt=0)
-    rounds: int = Field(default=10, gt=0)
+    client_count: int = Field(default=20, gt=0, le=100)
+    rounds: int = Field(default=10, gt=0, le=100)
     scenario: str = Field(default="backdoor")
     attack_enabled: bool = True
-    attacker_count: int = Field(default=1, ge=0)
-    intensity: float | None = Field(default=None, ge=0.0)
-    start_round: int = Field(default=1, ge=1)
+    attacker_count: int = Field(default=1, ge=0, le=100)
+    intensity: float | None = Field(default=None, ge=0.0, le=100.0)
+    start_round: int = Field(default=1, ge=1, le=100)
     targets: Any = None
-    seed: int | None = 42
+    seed: int | None = Field(default=42, ge=0, le=2147483647)
     background: bool = Field(default=False)
 
     @model_validator(mode="after")

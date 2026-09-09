@@ -23,6 +23,7 @@ from backend.api.routes.impact import router as impact_router
 from backend.api.routes.metrics import router as metrics_router
 from backend.api.routes.recovery import router as recovery_router
 from backend.api.routes.audit import router as audit_router
+from backend.api.routes.validation import router as validation_router
 
 # Configure logging
 logging.basicConfig(
@@ -118,3 +119,4 @@ app.include_router(impact_router, prefix=API_PREFIX, tags=["impact"])
 app.include_router(metrics_router, prefix=API_PREFIX, tags=["metrics"])
 app.include_router(recovery_router, prefix=API_PREFIX, tags=["recovery"])
 app.include_router(audit_router, prefix=API_PREFIX, tags=["audit"])
+app.include_router(validation_router, prefix=API_PREFIX, tags=["validation"])

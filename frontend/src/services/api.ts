@@ -11,6 +11,7 @@ import type {
   SimulationRun,
   SimulationSummary,
   ThreatResult,
+  ValidationRecord,
 } from '../types'
 
 const configuredBase = import.meta.env.VITE_API_BASE_URL as string | undefined
@@ -74,8 +75,9 @@ export const api = {
   getMetrics: (runId: string) => optionalList<MetricRecord>(`/metrics/${runId}`),
   getRecoveries: (runId: string) => optionalList<RecoveryRecord>(`/recovery/${runId}`),
   getAudit: (runId: string) => optionalList<AuditEvent>(`/audit/${runId}`),
+  getValidation: (runId: string) => optionalList<ValidationRecord>(`/validation/${runId}`),
   getDashboard: async (runId: string): Promise<DashboardData> => {
-    const [run, rounds, clients, threats, impacts, metrics, recoveries, audit] =
+    const [run, rounds, clients, threats, impacts, metrics, recoveries, audit, validation] =
       await Promise.all([
         api.getSimulation(runId),
         api.getRounds(runId),
@@ -85,7 +87,8 @@ export const api = {
         api.getMetrics(runId),
         api.getRecoveries(runId),
         api.getAudit(runId),
+        api.getValidation(runId),
       ])
-    return { run, rounds, clients, threats, impacts, metrics, recoveries, audit }
+    return { run, rounds, clients, threats, impacts, metrics, recoveries, audit, validation }
   },
 }

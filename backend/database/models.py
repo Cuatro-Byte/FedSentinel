@@ -52,6 +52,7 @@ class SimulationRun(Base):
     metrics = relationship("MetricRecord", back_populates="simulation_run", cascade="all, delete-orphan")
     recoveries = relationship("RecoveryRecord", back_populates="simulation_run", cascade="all, delete-orphan")
     audit_events = relationship("AuditEvent", back_populates="simulation_run", cascade="all, delete-orphan")
+    validation_records = relationship("ValidationRecord", back_populates="simulation_run", cascade="all, delete-orphan")
 
 
 class ClientRecord(Base):
@@ -271,3 +272,24 @@ class AuditEvent(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     simulation_run = relationship("SimulationRun", back_populates="audit_events")
+
+
+class ValidationRecord(Base):
+    """Server validation gate evaluation persistence."""
+    __tablename__ = "validation_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String, ForeignKey("simulation_runs.run_id"), nullable=False)
+    round_id = Column(Integer, nullable=False)
+    model_version = Column(String, nullable=True)
+    validation_loss = Column(Float, nullable=False)
+    validation_accuracy = Column(Float, nullable=False)
+    loss_spiked = Column(Boolean, default=False)
+    baseline_loss = Column(Float, nullable=True)
+    baseline_accuracy = Column(Float, nullable=True)
+    loss_delta = Column(Float, default=0.0)
+    accuracy_delta = Column(Float, default=0.0)
+    validation_status = Column(String, nullable=False)  # "HEALTHY" or "ANOMALOUS"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    simulation_run = relationship("SimulationRun", back_populates="validation_records")

@@ -11,6 +11,7 @@ const emptyData: DashboardData = {
   metrics: [],
   recoveries: [],
   audit: [],
+  validation: [],
 }
 
 export function useDashboardData(runId: string | null, autoRefresh: boolean) {

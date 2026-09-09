@@ -77,6 +77,18 @@ class SimulatedClient:
         # Generate a unique update ID
         update_id = str(uuid.uuid4())
 
+        # Compute parameter deltas: W_local - W_base
+        base_state = {k: v.cpu() for k, v in global_model.state_dict().items()}
+        local_state = training_result.model_state
+        delta = {}
+        
+        for k, v_local in local_state.items():
+            v_base = base_state[k]
+            if v_local.is_floating_point():
+                delta[k] = v_local - v_base
+            else:
+                delta[k] = v_local.to(torch.float32) - v_base.to(torch.float32)
+
         # Construct and return the canonical ModelUpdate
         return ModelUpdate(
             update_id=update_id,
@@ -85,7 +97,7 @@ class SimulatedClient:
             client_id=self.client_id,
             model_version=model_version,
             base_model_version=base_model_version,
-            parameters=training_result.model_state,
+            parameters=delta,
             sample_count=training_result.sample_count,
             local_loss=training_result.loss,
             local_accuracy=training_result.accuracy,

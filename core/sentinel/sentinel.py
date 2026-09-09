@@ -79,6 +79,8 @@ class Sentinel:
         self._impact_estimator: ImpactEstimator = ImpactEstimator()
         self._decision_engine: DecisionEngine = DecisionEngine()
         self._recovery_engine: RecoveryEngine = RecoveryEngine()
+        from core.sentinel.recovery_trigger import RecoveryTriggerEngine
+        self._recovery_trigger_engine: RecoveryTriggerEngine = RecoveryTriggerEngine()
         self._logger.info(
             "Sentinel initialised (feature_extractor_version=%s statistics_version=%s similarity_version=%s anomaly_version=%s reputation_version=%s threat_version=%s impact_version=%s decision_version=%s recovery_version=%s)",
             FEATURE_EXTRACTOR_VERSION,

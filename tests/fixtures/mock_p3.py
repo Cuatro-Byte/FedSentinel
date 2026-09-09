@@ -142,7 +142,9 @@ class MockP3Sentinel(SentinelInterface):
                        impacts: list[ImpactResult],
                        run_id: str, round_id: int,
                        model_version: str,
-                       config: dict) -> RecoveryResult:
+                       config: dict,
+                       val_metrics: dict | None = None,
+                       loss_spiked: bool = False) -> RecoveryResult:
         """Deterministic recovery check stub.
 
         Triggers recovery if any MALICIOUS detections exist AND

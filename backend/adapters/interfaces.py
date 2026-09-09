@@ -61,6 +61,18 @@ class FLCoreInterface(ABC):
         ...
 
     @abstractmethod
+    def validate_candidate(self, model_version: str) -> tuple[dict, bool]:
+        """Validate the candidate global model using the ServerValidationGate.
+        
+        Args:
+            model_version: The version string of the candidate model.
+            
+        Returns:
+            Tuple of (validation_metrics_dict, loss_spiked_boolean).
+        """
+        ...
+
+    @abstractmethod
     def evaluate(self, model_version: str) -> dict:
         """Evaluate the global model.
 
@@ -176,7 +188,9 @@ class SentinelInterface(ABC):
                        impacts: list[ImpactResult],
                        run_id: str, round_id: int,
                        model_version: str,
-                       config: dict) -> RecoveryResult:
+                       config: dict,
+                       val_metrics: dict | None = None,
+                       loss_spiked: bool = False) -> RecoveryResult:
         """Determine if recovery is needed after aggregation.
 
         Person 3 owns the recovery trigger intelligence.

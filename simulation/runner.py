@@ -33,9 +33,11 @@ from backend.database.repositories import (
     SimulationRepository, ClientRepository, RoundRepository,
     ModelUpdateRepository, DetectionRepository, ImpactRepository,
     RecoveryRepository, MetricRepository, AuditRepository,
+    ValidationRepository,
 )
 from core.models import SimulationMetrics
 from core.models.enums import ThreatLevel, ResponseAction, RecoveryStatus
+from core.validation.client_validator import ClientUpdateFirewall
 from simulation.scenario_manager import ScenarioManager
 
 logger = logging.getLogger("fedsentinel.runner")
@@ -73,6 +75,7 @@ class SimulationRunner:
         self.sentinel = sentinel
         self.config = config
         self.scenario = ScenarioManager(config)
+        self.client_firewall = ClientUpdateFirewall()
 
         # Repositories
         self.sim_repo = SimulationRepository(db)
@@ -84,6 +87,7 @@ class SimulationRunner:
         self.recovery_repo = RecoveryRepository(db)
         self.metric_repo = MetricRepository(db)
         self.audit_repo = AuditRepository(db)
+        self.val_repo = ValidationRepository(db)
 
     def run_simulation(self, run_id: str | None = None,
                        scenario: str | None = None) -> str:
@@ -261,12 +265,34 @@ class SimulationRunner:
         # Persist model updates (metadata only)
         self.update_repo.create_batch(updates, fl_round.id)
 
-        # Step 4: P3 detection
-        detections = self.sentinel.detect(updates, round_id)
+        # Step 3.5: Client-Update Validation Firewall
+        ref_keys = set(self.fl_core.global_model.state_dict().keys()) if hasattr(self.fl_core, "global_model") and hasattr(self.fl_core.global_model, "state_dict") else None
+        ref_shapes = {k: tuple(v.shape) for k, v in self.fl_core.global_model.state_dict().items()} if hasattr(self.fl_core, "global_model") and hasattr(self.fl_core.global_model, "state_dict") else None
+
+        valid_updates, fw_detections, fw_impacts = self.client_firewall.validate_updates(
+            updates, round_id=round_id, expected_keys=ref_keys, expected_shapes=ref_shapes
+        )
+
+        # Step 4: P3 detection (executed only on structurally and numerically valid updates)
+        if valid_updates:
+            sentinel_detections = self.sentinel.detect(valid_updates, round_id)
+        else:
+            sentinel_detections = []
+
+        fw_det_map = {d.update_id: d for d in fw_detections}
+        sen_det_map = {d.update_id: d for d in sentinel_detections}
+        detections = [fw_det_map.get(u.update_id) or sen_det_map[u.update_id] for u in updates]
         self.detection_repo.create_batch(detections, run_id, fl_round.id)
 
-        # Step 5: P3 impact estimation
-        impacts = self.sentinel.estimate_impact(updates, detections, round_id)
+        # Step 5: P3 impact estimation (executed only on valid updates)
+        if valid_updates:
+            sentinel_impacts = self.sentinel.estimate_impact(valid_updates, sentinel_detections, round_id)
+        else:
+            sentinel_impacts = []
+
+        fw_imp_map = {i.update_id: i for i in fw_impacts}
+        sen_imp_map = {i.update_id: i for i in sentinel_impacts}
+        impacts = [fw_imp_map.get(u.update_id) or sen_imp_map[u.update_id] for u in updates]
         self.impact_repo.create_batch(impacts, run_id, fl_round.id)
 
         # Step 6: P3 response decision
@@ -317,10 +343,42 @@ class SimulationRunner:
                     detector_version=det.detector_version,
                 )
 
+        # Capture the pre-round base version BEFORE aggregation produces the candidate.
+        # This is the W_base that every client delta was computed against, and the
+        # correct starting point for selective recovery re-aggregation.
+        pre_round_model_version = model_version
+
         # Step 7: P1 trust-aware aggregation (P4 passes detections to P1)
         new_model_version = self.fl_core.aggregate(
             updates, detections, model_version
         )
+
+        # ServerValidationGate: validate the candidate before treating as final
+        val_metrics, loss_spiked = None, False
+        if hasattr(self.fl_core, "validate_candidate"):
+            val_metrics, loss_spiked = self.fl_core.validate_candidate(new_model_version)
+            if val_metrics is not None:
+                val_loss = float(val_metrics.get("val_loss", 0.0))
+                val_acc = float(val_metrics.get("val_acc", 0.0))
+                loss_delta = float(val_metrics.get("loss_delta", 0.0))
+                acc_delta = float(val_metrics.get("acc_delta", 0.0))
+                val_status = "ANOMALOUS" if loss_spiked else "HEALTHY"
+                # Compute baseline if previous baseline was updated
+                baseline_loss = val_loss - loss_delta if loss_delta != 0.0 else val_loss
+                baseline_acc = val_acc + acc_delta if acc_delta != 0.0 else val_acc
+                self.val_repo.create(
+                    run_id=run_id,
+                    round_id=round_id,
+                    model_version=new_model_version,
+                    validation_loss=val_loss,
+                    validation_accuracy=val_acc,
+                    loss_spiked=loss_spiked,
+                    baseline_loss=baseline_loss,
+                    baseline_accuracy=baseline_acc,
+                    loss_delta=loss_delta,
+                    accuracy_delta=acc_delta,
+                    validation_status=val_status,
+                )
 
         # Step 8: P1 evaluation
         evaluation = self.fl_core.evaluate(new_model_version)
@@ -332,6 +390,8 @@ class SimulationRunner:
             evaluation, detections, impacts,
             run_id, round_id, new_model_version,
             recovery_params,
+            val_metrics=val_metrics,
+            loss_spiked=loss_spiked
         )
 
         # Step 10: If recovery triggered, P1 re-aggregates
@@ -349,11 +409,15 @@ class SimulationRunner:
                 recovery_version=recovery_result.recovery_version,
             )
 
-            # P1 performs selective re-aggregation
+            # P1 performs selective re-aggregation.
+            # IMPORTANT: pass pre_round_model_version (W_base), NOT new_model_version
+            # (the candidate W_candidate = W_base + ΔW_all).  Using the candidate would
+            # apply deltas twice: W_candidate + ΔW_recovered = W_base + ΔW_all + ΔW_recovered.
+            # The correct semantic is: W_recovered = W_base + ΔW_recovered.
             recovered_model_version = self.fl_core.re_aggregate(
                 updates,
                 recovery_result.excluded_client_ids,
-                recovery_result.previous_model_version,
+                pre_round_model_version,
             )
 
             # P1 evaluates recovered model

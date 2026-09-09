@@ -17,6 +17,7 @@ from simulation.scenarios import (
     build_model_poisoning_scenario,
     build_normal_scenario,
     build_sleeper_scenario,
+    build_sybil_scenario,
 )
 
 
@@ -30,6 +31,7 @@ class P2AttackAdapter(AttackInterface):
         "model_poisoning": build_model_poisoning_scenario,
         "normal": build_normal_scenario,
         "sleeper": build_sleeper_scenario,
+        "sybil": build_sybil_scenario,
     }
 
     def __init__(self) -> None:
@@ -103,6 +105,12 @@ class P2AttackAdapter(AttackInterface):
             return
         if scenario not in self._builders:
             raise ValueError(f"Unsupported attack scenario: {scenario}")
+        if not client_ids:
+            client_count = int(config.get("client_count", 0))
+            if client_count > 0:
+                client_ids = [f"client-{i}" for i in range(client_count)]
+            elif config.get("target_clients"):
+                client_ids = list(config.get("target_clients", []))
         self._client_ids = client_ids
         targets = self._target_clients(client_ids, config)
         rounds = max(int(config.get("total_rounds", config.get("rounds", 10))), 1)
@@ -171,6 +179,25 @@ class P2AttackAdapter(AttackInterface):
                     kwargs["source_class"] = int(raw_targets["source_class"])
                 if "target_class" in raw_targets:
                     kwargs["target_class"] = int(raw_targets["target_class"])
+            manager = builder(**kwargs)
+        elif scenario == "sybil":
+            sybil_targets = targets
+            if len(sybil_targets) < 2 and len(client_ids) >= 2:
+                sybil_targets = client_ids[-2:]
+            kwargs: dict[str, Any] = {
+                "client_ids": client_ids,
+                "target_clients": sybil_targets,
+                "start_round": start_round,
+                "total_rounds": rounds,
+            }
+            if intensity is not None:
+                kwargs["scale"] = float(intensity)
+            if "scale" in config:
+                kwargs["scale"] = float(config["scale"])
+            if "shared_seed" in config:
+                kwargs["shared_seed"] = int(config["shared_seed"])
+            if "target_bias" in config:
+                kwargs["target_bias"] = float(config["target_bias"])
             manager = builder(**kwargs)
         else:
             manager = builder(

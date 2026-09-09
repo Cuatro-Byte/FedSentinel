@@ -136,7 +136,7 @@ class SimilarityEngine:
         np.fill_diagonal(C, np.nan)
         np.fill_diagonal(D, np.nan)
 
-        # 4. Global properties (Median Update, Centroid)
+        # 4. Global properties (Median Update, Centroid, Median Magnitude)
         median_update = np.median(P, axis=0)
         median_update_norm_val = np.maximum(np.linalg.norm(median_update), EPSILON)
         median_normalized = median_update / median_update_norm_val
@@ -144,6 +144,8 @@ class SimilarityEngine:
         centroid = np.mean(P, axis=0)
         centroid_norm_val = np.maximum(np.linalg.norm(centroid), EPSILON)
         centroid_normalized = centroid / centroid_norm_val
+
+        median_L2 = float(np.median(L2))
 
         # 5. Extract per-client statistics
         results = []
@@ -171,6 +173,9 @@ class SimilarityEngine:
 
             c_dist = float(np.linalg.norm(P[i] - centroid))
             nc_dist = float(np.linalg.norm(P_norm[i] - centroid_normalized))
+
+            l2_val = float(L2[i, 0])
+            mag_rel_dev = float(abs(l2_val - median_L2) / (median_L2 + EPSILON))
 
             # Consensus Stats
             neighbors = np.sum(c_row >= SIMILARITY_THRESHOLD)
@@ -204,7 +209,8 @@ class SimilarityEngine:
                     "minimum_distance": _clean_float(min_dist),
                     "maximum_distance": _clean_float(max_dist),
                     "cluster_distance": _clean_float(c_dist),
-                    "normalized_cluster_distance": _clean_float(nc_dist)
+                    "normalized_cluster_distance": _clean_float(nc_dist),
+                    "magnitude_relative_deviation": _clean_float(mag_rel_dev)
                 },
                 "consensus": {
                     "consensus_score": _clean_float(consensus_score),
@@ -249,7 +255,8 @@ class SimilarityEngine:
                 "minimum_distance": 0.0,
                 "maximum_distance": 0.0,
                 "cluster_distance": 0.0,
-                "normalized_cluster_distance": 0.0
+                "normalized_cluster_distance": 0.0,
+                "magnitude_relative_deviation": 0.0
             },
             "consensus": {
                 "consensus_score": 1.0,

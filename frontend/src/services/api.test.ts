@@ -18,7 +18,7 @@ describe('FedSentinel API client', () => {
       detail: { error: { code: 'INVALID_CONFIGURATION', message: 'Unsupported scenario' } },
     }), { status: 400, headers: { 'Content-Type': 'application/json' } })))
 
-    const request = api.createSimulation({ client_count: 5, rounds: 2, scenario: 'invalid', attack_enabled: true, attacker_count: 1, intensity: 0.8, start_round: 1, targets: null, seed: 42, background: false })
+    const request = api.createSimulation({ client_count: 5, rounds: 2, scenario: 'invalid', attack_enabled: true })
     await expect(request).rejects.toMatchObject({ status: 400, code: 'INVALID_CONFIGURATION', message: 'Unsupported scenario' })
   })
 
@@ -34,6 +34,30 @@ describe('FedSentinel API client', () => {
 
     const result = await api.getDashboard('RUN-002')
     expect(result.run?.run_id).toBe('RUN-002')
-    expect(fetchMock).toHaveBeenCalledTimes(8)
+    expect(fetchMock).toHaveBeenCalledTimes(9)
+  })
+
+  it('reads validation records from the validation endpoint', async () => {
+    const valRecords = [
+      {
+        run_id: 'RUN-003',
+        round_id: 1,
+        model_version: 'model_v1',
+        validation_loss: 0.25,
+        validation_accuracy: 0.95,
+        loss_spiked: false,
+        baseline_loss: 0.25,
+        baseline_accuracy: 0.95,
+        loss_delta: 0.0,
+        accuracy_delta: 0.0,
+        validation_status: 'HEALTHY',
+        created_at: null,
+      },
+    ]
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(valRecords), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(api.getValidation('RUN-003')).resolves.toEqual(valRecords)
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/validation/RUN-003', expect.objectContaining({ headers: expect.objectContaining({ 'Content-Type': 'application/json' }) }))
   })
 })

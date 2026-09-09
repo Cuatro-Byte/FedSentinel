@@ -35,6 +35,7 @@ from core.attacks.model_poisoning import (
     ScalingAttack,
     SignFlipAttack,
 )
+from core.attacks.sybil import SybilAttack
 
 __all__: list[str] = [
     "BaseAttack",
@@ -53,4 +54,6 @@ __all__: list[str] = [
     "BackdoorDatasetWrapper",
     # Phase 5 — Centralized scheduling & ground-truth isolation
     "AttackManager",
+    # Coordinated multi-client attacks
+    "SybilAttack",
 ]

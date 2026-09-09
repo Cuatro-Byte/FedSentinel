@@ -20,6 +20,7 @@ from simulation.scenarios.mixed_attack import build_mixed_attack_scenario
 from simulation.scenarios.model_poisoning import build_model_poisoning_scenario
 from simulation.scenarios.normal import build_normal_scenario
 from simulation.scenarios.sleeper_scenario import build_sleeper_scenario
+from simulation.scenarios.sybil_scenario import build_sybil_scenario
 
 __all__: list[str] = [
     "build_normal_scenario",
@@ -28,4 +29,5 @@ __all__: list[str] = [
     "build_backdoor_scenario",
     "build_mixed_attack_scenario",
     "build_sleeper_scenario",
+    "build_sybil_scenario",
 ]

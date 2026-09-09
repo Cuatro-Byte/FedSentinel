@@ -76,6 +76,10 @@ class MockP1FL(FLCoreInterface):
         loss = max(self._base_loss - 0.02 * version_num, 0.05)
         return {"accuracy": round(accuracy, 4), "loss": round(loss, 4)}
 
+    def validate_candidate(self, model_version: str) -> tuple[dict, bool]:
+        """Deterministic validation stub."""
+        return {"val_loss": 0.40, "val_acc": 0.80, "loss_delta": 0.05, "acc_delta": 0.02}, False
+
     def re_aggregate(self, updates: list[ModelUpdate],
                      excluded_client_ids: list[str],
                      previous_model_version: str) -> str:

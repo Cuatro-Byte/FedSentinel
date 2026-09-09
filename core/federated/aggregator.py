@@ -76,7 +76,7 @@ class Aggregator:
             down_weight_factor: Scalar in (0, 1) applied to DOWN_WEIGHT updates.
 
         Returns:
-            A dictionary mapping parameter names to aggregated torch Tensors.
+            A dictionary mapping parameter names to the aggregated parameter deltas.
 
         Raises:
             ValueError: If decisions are missing, duplicate, mismatched, or all quarantined.

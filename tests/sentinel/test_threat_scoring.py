@@ -58,6 +58,13 @@ class TestThreatScoringLogic:
         res = engine.compute_threat(f, s, sim, a, r)
         assert res["threat_score"] > 0.0
 
+    def test_evidence_floor_for_new_client(self, engine: ThreatScoringEngine):
+        # Even with perfect reputation, a 100% anomaly must hit the evidence floor.
+        # current_evidence = (1.0 * 0.4 + 1.0 * 0.2) / 0.6 = 1.0
+        f, s, sim, a, r = dummy_inputs(anomaly_score=1.0, rep_score=1.0, sim_anomaly=1.0)
+        res = engine.compute_threat(f, s, sim, a, r)
+        assert res["threat_score"] >= 1.0
+
     def test_explanations(self, engine: ThreatScoringEngine):
         f, s, sim, a, r = dummy_inputs(anomaly_score=1.0, rep_score=0.0, sim_anomaly=1.0)
         res = engine.compute_threat(f, s, sim, a, r)

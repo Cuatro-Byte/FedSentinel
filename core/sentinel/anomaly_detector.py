@@ -104,7 +104,7 @@ class AnomalyDetector:
 
         # Compute Independent Signals
         try:
-            magnitude_anomaly = self._compute_magnitude_anomaly(global_stats)
+            magnitude_anomaly = self._compute_magnitude_anomaly(peer_dist)
             distribution_anomaly = self._compute_distribution_anomaly(global_stats)
             similarity_anomaly = self._compute_similarity_anomaly(peer_sim, consensus, peer_dist)
             sparsity_anomaly = self._compute_sparsity_anomaly(global_stats)
@@ -169,21 +169,19 @@ class AnomalyDetector:
             return 1.0  # Inf/NaN anomalies default to maximum anomaly
         return float(np.clip(val, 0.0, 1.0))
 
-    def _compute_magnitude_anomaly(self, global_stats: dict[str, Any]) -> float:
+    def _compute_magnitude_anomaly(self, peer_dist: dict[str, Any]) -> float:
         """
-        Derive magnitude anomaly from L2 norm, update magnitude, and RMS deviation.
-        A heuristic z-score replacement bounded to [0, 1].
+        Derive magnitude anomaly from the peer-relative magnitude deviation.
+        A heuristic mapping relative distance to [0, 1].
         """
-        magnitude = float(global_stats.get("update_magnitude", 0.0))
-        rms = float(global_stats.get("rms_deviation", 0.0))
+        mag_rel_dev = float(peer_dist.get("magnitude_relative_deviation", 0.0))
         
-        # Assume extremely high or extremely low (zero) magnitudes are anomalous.
-        # Heuristic mapping: map magnitude to [0,1].
-        # Using a simple scaling: normal magnitude ~1.0. 
-        mag_score = abs(magnitude - 1.0) / (abs(magnitude - 1.0) + 1.0 + EPSILON)
-        rms_score = rms / (rms + 1.0 + EPSILON)
+        # mag_rel_dev is the absolute ratio difference from the round's median magnitude.
+        # e.g., 0.0 means it matches the median. 1.0 means it's 100% off (twice or half).
+        # We scale it so large deviations map asymptotically to 1.0.
+        mag_score = mag_rel_dev / (mag_rel_dev + 1.0 + EPSILON)
         
-        return (mag_score + rms_score) / 2.0
+        return mag_score
 
     def _compute_distribution_anomaly(self, global_stats: dict[str, Any]) -> float:
         """
@@ -191,7 +189,7 @@ class AnomalyDetector:
         """
         skewness = abs(float(global_stats.get("skewness", 0.0)))
         kurtosis = abs(float(global_stats.get("kurtosis", 0.0)))
-        mad = float(global_stats.get("median_absolute_deviation", 0.0))
+        mad = float(global_stats.get("mad", global_stats.get("median_absolute_deviation", 0.0)))
         iqr = float(global_stats.get("interquartile_range", 0.0))
         
         skew_score = skewness / (skewness + 5.0 + EPSILON)

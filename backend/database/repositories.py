@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from backend.database.models import (
     SimulationRun, ClientRecord, FLRound, ModelUpdateRecord,
     DetectionRecord, ImpactRecord, RecoveryRecord, MetricRecord, AuditEvent,
+    ValidationRecord,
 )
 from core.models import (
     ModelUpdate, DetectionResult, ImpactResult, RecoveryResult, SimulationMetrics,
@@ -496,3 +497,48 @@ class AuditRepository:
         return self.db.query(AuditEvent).filter(
             AuditEvent.run_id == run_id
         ).order_by(AuditEvent.timestamp).all()
+
+
+class ValidationRepository:
+    """CRUD operations for ValidationRecord."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def create(
+        self,
+        run_id: str,
+        round_id: int,
+        model_version: Optional[str],
+        validation_loss: float,
+        validation_accuracy: float,
+        loss_spiked: bool,
+        baseline_loss: Optional[float],
+        baseline_accuracy: Optional[float],
+        loss_delta: float,
+        accuracy_delta: float,
+        validation_status: str,
+    ) -> ValidationRecord:
+        record = ValidationRecord(
+            run_id=run_id,
+            round_id=round_id,
+            model_version=model_version,
+            validation_loss=validation_loss,
+            validation_accuracy=validation_accuracy,
+            loss_spiked=loss_spiked,
+            baseline_loss=baseline_loss,
+            baseline_accuracy=baseline_accuracy,
+            loss_delta=loss_delta,
+            accuracy_delta=accuracy_delta,
+            validation_status=validation_status,
+            created_at=datetime.utcnow(),
+        )
+        self.db.add(record)
+        self.db.commit()
+        self.db.refresh(record)
+        return record
+
+    def get_by_run(self, run_id: str) -> list[ValidationRecord]:
+        return self.db.query(ValidationRecord).filter(
+            ValidationRecord.run_id == run_id
+        ).order_by(ValidationRecord.round_id).all()

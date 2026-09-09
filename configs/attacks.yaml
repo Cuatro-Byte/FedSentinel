@@ -33,3 +33,8 @@ scenarios:
     escalation_round: 5
     stealth_poison_rate: 0.2
     escalation_scale: 15.0
+  sybil:
+    attacker_count: 2
+    scale: 1.0
+    start_round: 1
+    shared_seed: 42

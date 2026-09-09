@@ -39,22 +39,29 @@ class P3SentinelAdapter(SentinelInterface):
         detections = []
         for res in results:
             dr_dict = res.get("client_result", {}).get("detection_result", {})
-            
-            action_str = dr_dict.get("action", "ACCEPT")
-            if action_str == "ACCEPT":
+            pipeline_status = res.get("pipeline_metadata", {}).get("pipeline_status", "SUCCESS")
+            action_str = dr_dict.get("action")
+
+            if pipeline_status == "FAILED" or not action_str:
+                action = ResponseAction.QUARANTINE
+                threat_level = ThreatLevel.MALICIOUS
+                threat_score = 1.0
+            elif action_str == "ACCEPT":
                 action = ResponseAction.ACCEPT
+                threat_level_str = dr_dict.get("threat_level", "SAFE")
+                threat_level = ThreatLevel.SAFE if threat_level_str == "SAFE" else (
+                    ThreatLevel.SUSPICIOUS if threat_level_str == "SUSPICIOUS" else ThreatLevel.MALICIOUS
+                )
+                threat_score = dr_dict.get("threat_score", 0.0)
             elif action_str == "DOWN_WEIGHT":
                 action = ResponseAction.DOWN_WEIGHT
+                threat_level_str = dr_dict.get("threat_level", "SUSPICIOUS")
+                threat_level = ThreatLevel.SUSPICIOUS if threat_level_str == "SUSPICIOUS" else ThreatLevel.MALICIOUS
+                threat_score = dr_dict.get("threat_score", 0.5)
             else:
                 action = ResponseAction.QUARANTINE
-                
-            threat_level_str = dr_dict.get("threat_level", "SAFE")
-            if threat_level_str == "SAFE":
-                threat_level = ThreatLevel.SAFE
-            elif threat_level_str == "SUSPICIOUS":
-                threat_level = ThreatLevel.SUSPICIOUS
-            else:
                 threat_level = ThreatLevel.MALICIOUS
+                threat_score = dr_dict.get("threat_score", 1.0)
             
             detection = DetectionResult(
                 update_id=dr_dict.get("update_id", "unknown"),
@@ -132,42 +139,36 @@ class P3SentinelAdapter(SentinelInterface):
         # The detect() method already extracted the final action into the DetectionResult
         return {d.update_id: d.action for d in detections}
 
-    def check_recovery(self, evaluation: dict, detections: list[DetectionResult], impacts: list[ImpactResult], run_id: str, round_id: int, model_version: str, config: dict) -> RecoveryResult:
+    def check_recovery(self, evaluation: dict, detections: list[DetectionResult], impacts: list[ImpactResult], run_id: str, round_id: int, model_version: str, config: dict, val_metrics: dict | None = None, loss_spiked: bool = False) -> RecoveryResult:
         """
-        Determine if recovery is needed based on P3's individual client recovery recommendations.
+        Determine if recovery is needed based on P3's RecoveryTriggerEngine.
         """
-        results = self._round_cache.get(round_id, [])
+        anomaly_scores = {d.client_id: d.anomaly_score for d in detections}
         
-        excluded_clients = []
-        affected_updates = []
-        trigger_reasons = []
-        selected_action = None
+        decision = self.sentinel._recovery_trigger_engine.evaluate_recovery_need(
+            anomaly_scores=anomaly_scores,
+            val_metrics=val_metrics,
+            loss_spiked=loss_spiked
+        )
         
-        for res in results:
-            client_res = res.get("client_result", {})
-            rec_out = client_res.get("recovery_output", {})
-            
-            if rec_out.get("rollback_recommended", False) or rec_out.get("quarantine_recommended", False):
-                client_id = rec_out.get("client_id")
-                update_id = rec_out.get("update_id")
-                action = rec_out.get("primary_action", "ROLLBACK")
-                selected_action = action
-                if client_id and client_id not in excluded_clients:
-                    excluded_clients.append(client_id)
-                if update_id and update_id not in affected_updates:
-                    affected_updates.append(update_id)
-                
-                exp = rec_out.get("recovery_explanation", {})
-                reason = exp.get("why_this_action") or f"Client {client_id} {action} recommended"
-                trigger_reasons.append(reason)
-                    
-        recovery_status = RecoveryStatus.TRIGGERED if excluded_clients else RecoveryStatus.NOT_REQUIRED
+        excluded_clients = decision.quarantined_clients
+        affected_updates = [d.update_id for d in detections if d.client_id in excluded_clients]
         
+        recovery_status = RecoveryStatus.TRIGGERED if decision.is_triggered else RecoveryStatus.NOT_REQUIRED
+        
+        details = {
+            "results_count": len(detections),
+            "triggers": [decision.trigger_reason],
+            "recovery_round": decision.recovery_round,
+            "val_metrics": val_metrics,
+            "loss_spiked": loss_spiked
+        }
+
         return RecoveryResult(
             recovery_id=f"rec-{run_id}-{round_id}",
             run_id=run_id,
             round_id=round_id,
-            trigger="; ".join(trigger_reasons) if trigger_reasons else "No recovery needed",
+            trigger=decision.trigger_reason,
             affected_update_ids=affected_updates,
             excluded_client_ids=excluded_clients,
             previous_model_version=model_version,
@@ -176,6 +177,6 @@ class P3SentinelAdapter(SentinelInterface):
             before_loss=float(evaluation["loss"]) if evaluation and evaluation.get("loss") is not None else None,
             recovery_status=recovery_status,
             recovery_version="recovery-v1",
-            selected_action=selected_action,
-            details={"results_count": len(results), "triggers": trigger_reasons},
+            selected_action="ROLLBACK" if decision.is_triggered else None,
+            details=details,
         )

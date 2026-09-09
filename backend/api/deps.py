@@ -17,6 +17,7 @@ from backend.services.threat_service import ThreatService
 from backend.services.impact_service import ImpactService
 from backend.services.metrics_service import MetricsService
 from backend.services.recovery_service import RecoveryService
+from backend.services.validation_service import ValidationService
 _config: AppConfig = get_config()
 
 
@@ -49,3 +50,7 @@ def get_metrics_service(db: Session) -> MetricsService:
 
 def get_recovery_service(db: Session) -> RecoveryService:
     return RecoveryService(db)
+
+
+def get_validation_service(db: Session) -> ValidationService:
+    return ValidationService(db)

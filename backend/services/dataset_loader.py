@@ -42,14 +42,16 @@ def generate_pattern_dataset(
 
 def get_default_datasets(
     train_samples: int = 500,
+    val_samples: int = 100,
     eval_samples: int = 100,
     num_classes: int = 10,
     seed: int = 42,
-) -> tuple[Dataset, Dataset]:
-    """Return distinct training and evaluation datasets."""
+) -> tuple[Dataset, Dataset, Dataset]:
+    """Return distinct training, validation, and evaluation datasets."""
     train_ds = generate_pattern_dataset(sample_count=train_samples, num_classes=num_classes, seed=seed)
+    val_ds = generate_pattern_dataset(sample_count=val_samples, num_classes=num_classes, seed=seed + 2000)
     eval_ds = generate_pattern_dataset(sample_count=eval_samples, num_classes=num_classes, seed=seed + 1000)
-    return train_ds, eval_ds
+    return train_ds, val_ds, eval_ds
 
 
 def partition_for_clients(

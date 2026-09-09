@@ -1,6 +1,7 @@
 import copy
 from dataclasses import dataclass
 from typing import Callable, List, Optional
+import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
@@ -212,7 +213,16 @@ class Server:
             new_params = self.aggregator.aggregate(updates)
 
         # 4. Global model update and Evaluation phase
-        self.global_model.load_state_dict(new_params)
+        # Reconstruct the candidate model: base_state + aggregated_delta
+        new_state = {}
+        for k, v in previous_state.items():
+            delta_tensor = new_params[k].to(v.device)
+            if v.is_floating_point():
+                new_state[k] = v + delta_tensor
+            else:
+                new_state[k] = v + delta_tensor.round().to(v.dtype)
+                
+        self.global_model.load_state_dict(new_state)
         
         try:
             eval_result = self.evaluator.evaluate(self.global_model, self.eval_dataloader)

@@ -92,7 +92,9 @@ class P1FLAdapter(FLCoreInterface):
         from core.federated.trainer import LocalTrainer
         from backend.services.dataset_loader import get_default_datasets, partition_for_clients
 
-        train_ds, eval_ds = get_default_datasets(seed=seed)
+        from core.validation.server_validator import ServerValidationGate
+
+        train_ds, val_ds, eval_ds = get_default_datasets(seed=seed)
         partitions = partition_for_clients(train_ds, client_count=client_count, seed=seed)
 
         self.client_manager = ClientManager()
@@ -104,6 +106,7 @@ class P1FLAdapter(FLCoreInterface):
             )
 
         self.eval_dataloader = DataLoader(eval_ds, batch_size=batch_size, shuffle=False)
+        self.server_validator = ServerValidationGate(val_dataset=val_ds, batch_size=batch_size)
 
     def initialize_global_model(self, config: dict) -> str:
         import uuid
@@ -175,17 +178,45 @@ class P1FLAdapter(FLCoreInterface):
         
         p1_updates = [self._convert_update_p4_to_p1(u) for u in updates]
         p1_decisions = [self._convert_detection_p4_to_p1(d) for d in detections]
-            
-        new_params = self.aggregator.aggregate_with_decisions(p1_updates, p1_decisions)
-        
-        self.global_model.load_state_dict(new_params)
-        
+
+        # Filter out quarantined updates so corrupted/empty tensors do not enter aggregator
+        non_quarantined = [
+            (u, d) for u, d in zip(p1_updates, p1_decisions)
+            if d.action != P1ResponseAction.QUARANTINE
+        ]
+
+        base_state = self.checkpoint_manager.load(current_model_version)
         round_id = updates[0].round_id if updates else 0
         run_id = updates[0].run_id if updates else "unknown_run"
         new_version = f"model_{run_id}_v{round_id}"
-        self.checkpoint_manager.save(new_version, new_params)
-        
+
+        if non_quarantined:
+            filtered_updates, filtered_decisions = zip(*non_quarantined)
+            new_params = self.aggregator.aggregate_with_decisions(
+                list(filtered_updates), list(filtered_decisions)
+            )
+            new_state = {}
+            for k, v in base_state.items():
+                delta_tensor = new_params[k].to(v.device)
+                if v.is_floating_point():
+                    new_state[k] = v + delta_tensor
+                else:
+                    new_state[k] = v + delta_tensor.round().to(v.dtype)
+        else:
+            # If all updates are quarantined, preserve current model state
+            new_state = {k: v.clone() for k, v in base_state.items()}
+
+        self.global_model.load_state_dict(new_state)
+        self.checkpoint_manager.save(new_version, new_state)
+
         return new_version
+
+    def validate_candidate(self, model_version: str) -> tuple[dict, bool]:
+        state_dict = self.checkpoint_manager.load(model_version)
+        self.global_model.load_state_dict(state_dict)
+        if not hasattr(self, 'server_validator'):
+            return {"val_loss": 0.0, "val_acc": 1.0, "loss_delta": 0.0, "acc_delta": 0.0}, False
+        return self.server_validator.evaluate_checkpoint(self.global_model)
 
     def evaluate(self, model_version: str) -> dict:
         state_dict = self.checkpoint_manager.load(model_version)
@@ -212,11 +243,21 @@ class P1FLAdapter(FLCoreInterface):
             return previous_model_version
             
         new_params = self.aggregator.aggregate(filtered_updates)
-        self.global_model.load_state_dict(new_params)
+        
+        base_state = self.checkpoint_manager.load(previous_model_version)
+        new_state = {}
+        for k, v in base_state.items():
+            delta_tensor = new_params[k].to(v.device)
+            if v.is_floating_point():
+                new_state[k] = v + delta_tensor
+            else:
+                new_state[k] = v + delta_tensor.round().to(v.dtype)
+                
+        self.global_model.load_state_dict(new_state)
         
         round_id = updates[0].round_id if updates else 0
         run_id = updates[0].run_id if updates else "unknown_run"
         new_version = f"model_{run_id}_v{round_id}_recovered"
-        self.checkpoint_manager.save(new_version, new_params)
+        self.checkpoint_manager.save(new_version, new_state)
         
         return new_version

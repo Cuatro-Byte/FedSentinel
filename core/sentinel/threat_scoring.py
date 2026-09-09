@@ -83,6 +83,12 @@ class ThreatScoringEngine:
                 history_threat * WEIGHT_HISTORY
             )
             
+            # Smallest principled fix: Evidence Floor
+            # A client's final threat score should not be mathematically suppressed
+            # below the normalized severity of their current physical deviation.
+            current_evidence = (anomaly_threat * WEIGHT_ANOMALY + similarity_threat * WEIGHT_SIMILARITY) / (WEIGHT_ANOMALY + WEIGHT_SIMILARITY)
+            raw_threat = max(raw_threat, current_evidence)
+            
             threat_score = self._clip(raw_threat)
             
             # Mapping
