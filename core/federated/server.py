@@ -1,11 +1,12 @@
 import copy
 from dataclasses import dataclass
 from typing import Callable, List, Optional
+import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from core.models.model_update import ModelUpdate
-from core.models.detection_result import DetectionResult
+from core.p1_models.model_update import ModelUpdate
+from core.p1_models.detection_result import DetectionResult
 from core.federated.evaluator import EvaluationResult, Evaluator
 from core.federated.client_manager import ClientManager
 from core.federated.aggregator import Aggregator
@@ -212,7 +213,16 @@ class Server:
             new_params = self.aggregator.aggregate(updates)
 
         # 4. Global model update and Evaluation phase
-        self.global_model.load_state_dict(new_params)
+        # Reconstruct the candidate model: base_state + aggregated_delta
+        new_state = {}
+        for k, v in previous_state.items():
+            delta_tensor = new_params[k].to(v.device)
+            if v.is_floating_point():
+                new_state[k] = v + delta_tensor
+            else:
+                new_state[k] = v + delta_tensor.round().to(v.dtype)
+                
+        self.global_model.load_state_dict(new_state)
         
         try:
             eval_result = self.evaluator.evaluate(self.global_model, self.eval_dataloader)

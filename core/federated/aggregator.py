@@ -1,8 +1,8 @@
 import torch
 from typing import List, Dict, Any, Optional
 
-from core.models.model_update import ModelUpdate
-from core.models.detection_result import DetectionResult, ResponseAction
+from core.p1_models.model_update import ModelUpdate
+from core.p1_models.detection_result import DetectionResult, ResponseAction
 
 
 class Aggregator:
@@ -76,7 +76,7 @@ class Aggregator:
             down_weight_factor: Scalar in (0, 1) applied to DOWN_WEIGHT updates.
 
         Returns:
-            A dictionary mapping parameter names to aggregated torch Tensors.
+            A dictionary mapping parameter names to the aggregated parameter deltas.
 
         Raises:
             ValueError: If decisions are missing, duplicate, mismatched, or all quarantined.

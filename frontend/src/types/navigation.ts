@@ -1,0 +1,10 @@
+export type AppRoute =
+  | '/dashboard'
+  | '/simulation'
+  | '/rounds'
+  | '/clients'
+  | '/threats'
+  | '/impact'
+  | '/recovery'
+  | '/validation'
+  | '/audit'

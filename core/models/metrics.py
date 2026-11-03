@@ -1,23 +1,28 @@
-from dataclasses import dataclass
+"""
+Canonical SimulationMetrics contract (Engineering Contract §12).
+
+Assembled by Person 4 from data produced by P1, P2, P3.
+"""
+
 from datetime import datetime
 
-@dataclass
-class SimulationMetrics:
-    """
-    Canonical structure representing metrics for a simulation round in FedSentinel.
-    Tracks both model performance and security outcomes.
-    """
+from pydantic import BaseModel, Field
+
+
+class SimulationMetrics(BaseModel):
+    """Canonical simulation metrics structure per Engineering Contract §12."""
+
     run_id: str
     round_id: int
     model_version: str
     accuracy: float
     loss: float
-    attack_success_rate: float | None
-    malicious_updates: int
-    suspicious_updates: int
-    quarantined_updates: int
-    accepted_updates: int
-    downweighted_updates: int
-    recovery_triggered: bool
-    recovery_count: int
-    created_at: datetime
+    attack_success_rate: float | None = None
+    malicious_updates: int = 0
+    suspicious_updates: int = 0
+    quarantined_updates: int = 0
+    accepted_updates: int = 0
+    downweighted_updates: int = 0
+    recovery_triggered: bool = False
+    recovery_count: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)

@@ -1,10 +1,14 @@
+.venv/
+venv/
 __pycache__/
-*.pyc
-*.pyo
 *.py[cod]
 .pytest_cache/
-*.egg-info/
-dist/
-build/
-.env
 
+frontend/node_modules/
+frontend/dist/
+frontend/.npm-cache/
+
+*.db
+.env
+*.log
+openapi.json
